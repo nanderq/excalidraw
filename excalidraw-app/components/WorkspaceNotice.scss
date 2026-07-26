@@ -1,0 +1,41 @@
+.workspace-notice {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 2rem;
+  font-family: "Assistant", sans-serif;
+  text-align: center;
+
+  &__card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    max-width: 24rem;
+  }
+
+  h1 {
+    margin: 0;
+    font-family: "Excalifont", "Assistant", sans-serif;
+    font-size: 1.5rem;
+    font-weight: 400;
+  }
+
+  p {
+    margin: 0;
+    opacity: 0.7;
+    line-height: 1.5;
+  }
+
+  a {
+    align-self: center;
+    margin-top: 0.5rem;
+    color: var(--color-primary, #6965db);
+    font-weight: 600;
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+}

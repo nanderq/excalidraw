@@ -1,9 +1,8 @@
-import { CaptureUpdateAction, newElementWith } from "@excalidraw/excalidraw";
 import {
-  createRedoAction,
-  createUndoAction,
-} from "@excalidraw/excalidraw/actions/actionHistory";
-import { syncInvalidIndices } from "@excalidraw/element";
+  CaptureUpdateAction,
+  ExcalidrawAPIProvider,
+  newElementWith,
+} from "@excalidraw/excalidraw";
 import { API } from "@excalidraw/excalidraw/tests/helpers/api";
 import { act, render, waitFor } from "@excalidraw/excalidraw/tests/test-utils";
 import { vi } from "vitest";
@@ -12,9 +11,13 @@ import { StoreIncrement } from "@excalidraw/element";
 
 import type { DurableIncrement, EphemeralIncrement } from "@excalidraw/element";
 
-import ExcalidrawApp from "../App";
+import { ExcalidrawWrapper as ExcalidrawApp } from "../App";
+
+import type { Id } from "../convex/_generated/dataModel";
 
 const { h } = window;
+
+const TEST_WORKSPACE_ID = "test-workspace" as Id<"workspaces">;
 
 Object.defineProperty(window, "crypto", {
   value: {
@@ -27,53 +30,46 @@ Object.defineProperty(window, "crypto", {
   },
 });
 
-vi.mock("../../excalidraw-app/data/firebase.ts", () => {
-  const loadFromFirebase = async () => null;
-  const saveToFirebase = () => {};
-  const isSavedToFirebase = () => true;
-  const loadFilesFromFirebase = async () => ({
-    loadedFiles: [],
-    erroredFiles: [],
-  });
-  const saveFilesToFirebase = async () => ({
-    savedFiles: new Map(),
-    erroredFiles: new Map(),
-  });
+vi.mock("../collab/useSceneSync", () => ({
+  useSceneSync: ({ initialStatePromiseRef }: any) => {
+    initialStatePromiseRef.current.promise.resolve(null);
+    return { queueSave: () => {} };
+  },
+}));
 
-  return {
-    loadFromFirebase,
-    saveToFirebase,
-    isSavedToFirebase,
-    loadFilesFromFirebase,
-    saveFilesToFirebase,
-  };
-});
+vi.mock("../data/useConvexFileManager", () => ({
+  useConvexFileManager: () => ({
+    getFiles: async () => ({ loadedFiles: [], erroredFiles: new Map() }),
+    saveFiles: async () => ({ savedFiles: new Map(), erroredFiles: new Map() }),
+  }),
+}));
 
-vi.mock("socket.io-client", () => {
-  return {
-    default: () => {
-      return {
-        close: () => {},
-        on: () => {},
-        once: () => {},
-        off: () => {},
-        emit: () => {},
-      };
-    },
-  };
-});
+vi.mock("../collab/usePresenceCollaborators", () => ({
+  usePresenceCollaborators: () => {},
+}));
 
-/**
- * These test would deserve to be extended by testing collab with (at least) two clients simultanouesly,
- * while having access to both scenes, appstates stores, histories and etc.
- * i.e. multiplayer history tests could be a good first candidate, as we could test both history stacks simultaneously.
- */
-describe("collaboration", () => {
+// the editor is rendered bare here, without the router and Convex provider it
+// normally sits inside — the workspace chrome around it (main menu, switcher)
+// reaches for both
+vi.mock("react-router-dom", () => ({
+  useNavigate: () => vi.fn(),
+}));
+
+vi.mock("convex/react", () => ({
+  useQuery: () => [],
+  useMutation: () => vi.fn(),
+}));
+
+describe("store increments", () => {
   it("should emit two ephemeral increments even though updates get batched", async () => {
     const durableIncrements: DurableIncrement[] = [];
     const ephemeralIncrements: EphemeralIncrement[] = [];
 
-    await render(<ExcalidrawApp />);
+    await render(
+      <ExcalidrawAPIProvider>
+        <ExcalidrawApp workspaceId={TEST_WORKSPACE_ID} />
+      </ExcalidrawAPIProvider>,
+    );
 
     h.store.onStoreIncrementEmitter.on((increment) => {
       if (StoreIncrement.isDurable(increment)) {
@@ -139,114 +135,6 @@ describe("collaboration", () => {
       );
       // eslint-disable-next-line dot-notation
       expect(h.store["scheduledMicroActions"].length).toBe(0);
-    });
-  });
-
-  it("should allow to undo / redo even on force-deleted elements", async () => {
-    await render(<ExcalidrawApp />);
-    const rect1Props = {
-      type: "rectangle",
-      id: "A",
-      height: 200,
-      width: 100,
-    } as const;
-
-    const rect2Props = {
-      type: "rectangle",
-      id: "B",
-      width: 100,
-      height: 200,
-    } as const;
-
-    const rect1 = API.createElement({ ...rect1Props });
-    const rect2 = API.createElement({ ...rect2Props });
-
-    API.updateScene({
-      elements: syncInvalidIndices([rect1, rect2]),
-      captureUpdate: CaptureUpdateAction.IMMEDIATELY,
-    });
-
-    API.updateScene({
-      elements: syncInvalidIndices([
-        rect1,
-        newElementWith(h.elements[1], { isDeleted: true }),
-      ]),
-      captureUpdate: CaptureUpdateAction.IMMEDIATELY,
-    });
-
-    await waitFor(() => {
-      expect(API.getUndoStack().length).toBe(2);
-      expect(API.getSnapshot()).toEqual([
-        expect.objectContaining(rect1Props),
-        expect.objectContaining({ ...rect2Props, isDeleted: true }),
-      ]);
-      expect(h.elements).toEqual([
-        expect.objectContaining(rect1Props),
-        expect.objectContaining({ ...rect2Props, isDeleted: true }),
-      ]);
-    });
-
-    // one form of force deletion happens when starting the collab, not to sync potentially sensitive data into the server
-    window.collab.startCollaboration(null);
-
-    await waitFor(() => {
-      expect(API.getUndoStack().length).toBe(2);
-      // we never delete from the local snapshot as it is used for correct diff calculation
-      expect(API.getSnapshot()).toEqual([
-        expect.objectContaining(rect1Props),
-        expect.objectContaining({ ...rect2Props, isDeleted: true }),
-      ]);
-      expect(h.elements).toEqual([expect.objectContaining(rect1Props)]);
-    });
-
-    const undoAction = createUndoAction(h.history);
-    act(() => h.app.actionManager.executeAction(undoAction));
-
-    // with explicit undo (as addition) we expect our item to be restored from the snapshot!
-    await waitFor(() => {
-      expect(API.getUndoStack().length).toBe(1);
-      expect(API.getRedoStack().length).toBe(1);
-      expect(API.getSnapshot()).toEqual([
-        expect.objectContaining(rect1Props),
-        expect.objectContaining({ ...rect2Props, isDeleted: false }),
-      ]);
-      expect(h.elements).toEqual([
-        expect.objectContaining(rect1Props),
-        expect.objectContaining({ ...rect2Props, isDeleted: false }),
-      ]);
-    });
-
-    // simulate force deleting the element remotely
-    API.updateScene({
-      elements: syncInvalidIndices([rect1]),
-      captureUpdate: CaptureUpdateAction.NEVER,
-    });
-
-    await waitFor(() => {
-      expect(API.getUndoStack().length).toBe(1);
-      expect(API.getRedoStack().length).toBe(1);
-      expect(API.getSnapshot()).toEqual([
-        expect.objectContaining(rect1Props),
-        expect.objectContaining({ ...rect2Props, isDeleted: true }),
-      ]);
-      expect(h.elements).toEqual([expect.objectContaining(rect1Props)]);
-    });
-
-    const redoAction = createRedoAction(h.history);
-    act(() => h.app.actionManager.executeAction(redoAction));
-
-    // with explicit redo (as removal) we again restore the element from the snapshot!
-    await waitFor(() => {
-      expect(API.getUndoStack().length).toBe(2);
-      expect(API.getRedoStack().length).toBe(0);
-      expect(API.getSnapshot()).toEqual([
-        expect.objectContaining(rect1Props),
-        expect.objectContaining({ ...rect2Props, isDeleted: true }),
-      ]);
-      expect(h.elements).toEqual([
-        expect.objectContaining(rect1Props),
-        expect.objectContaining({ ...rect2Props, isDeleted: true }),
-      ]);
     });
   });
 });

@@ -192,7 +192,8 @@
       }
     }
 
-    .ToolIcon__LaserPointer .ToolIcon__icon,
+    // the laser pointer button sits next to the toolbar island, so it keeps
+    // the toolbar's own button sizing (see .App-toolbar-container above)
     .ToolIcon__MagicButton .ToolIcon__icon {
       width: var(--default-button-size);
       height: var(--default-button-size);

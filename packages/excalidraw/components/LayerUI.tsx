@@ -350,6 +350,7 @@ const LayerUI = ({
                           "zen-mode": appState.zenModeEnabled,
                         })}
                       >
+                        <tunnels.TopCenterTunnel.Out />
                         <Toolbar
                           app={app}
                           appState={appState}
@@ -361,6 +362,7 @@ const LayerUI = ({
                         />
                         {isCollaborating && (
                           <Island
+                            padding={1}
                             style={{
                               marginLeft: spacing.collabMarginLeft,
                               alignSelf: "center",
