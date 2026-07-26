@@ -5,7 +5,7 @@
       "headers": [
         {
           "key": "Access-Control-Allow-Origin",
-          "value": "https://excalidraw.com"
+          "value": "https://draw.blocksconnect.com"
         },
         {
           "key": "X-Content-Type-Options",
@@ -30,7 +30,7 @@
         },
         {
           "key": "Access-Control-Allow-Origin",
-          "value": "https://excalidraw.com"
+          "value": "https://draw.blocksconnect.com"
         }
       ]
     },
@@ -62,6 +62,12 @@
         }
       ],
       "destination": "https://marketplace.visualstudio.com/items?itemName=pomdtr.excalidraw-editor"
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/((?!assets/|fonts/|locales/).*)",
+      "destination": "/index.html"
     }
   ],
   "outputDirectory": "excalidraw-app/build",
