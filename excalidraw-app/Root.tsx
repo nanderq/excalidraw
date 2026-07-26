@@ -15,6 +15,7 @@ import {
 import { ExcalidrawAPIProvider } from "@excalidraw/excalidraw";
 
 import { Provider, appJotaiStore } from "./app-jotai";
+import { getSafeAuthDestination } from "./auth-redirect";
 import { AuthScreen } from "./components/AuthScreen";
 import { JoinWorkspace } from "./components/JoinWorkspace";
 import { TopErrorBoundary } from "./components/TopErrorBoundary";
@@ -32,7 +33,7 @@ const RequireAuth = ({ children }: { children: ReactNode }) => {
   // carry the destination through the sign-in detour, so a share link handed
   // to someone with no session still lands them on the board
   const signInTo = `/sign-in?redirect=${encodeURIComponent(
-    `${location.pathname}${location.search}`,
+    getSafeAuthDestination(`${location.pathname}${location.search}`),
   )}`;
 
   return (

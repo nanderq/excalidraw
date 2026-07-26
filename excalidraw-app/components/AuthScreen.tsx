@@ -1,7 +1,9 @@
 import { useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useConvexAuth } from "convex/react";
+import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 
 import { authClient } from "../auth-client";
+import { getSafeAuthDestination } from "../auth-redirect";
 import { loadExcalifont } from "../excalifont";
 
 import "./AuthScreen.scss";
@@ -26,6 +28,7 @@ const discordIcon = (
 export const AuthScreen = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { isAuthenticated, isLoading } = useConvexAuth();
   const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-in");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -36,9 +39,7 @@ export const AuthScreen = () => {
   // where RequireAuth bounced us from, e.g. a share link followed without a
   // session. Only same-site paths, so the param can't be used as an open
   // redirect to somewhere off the app.
-  const redirect = searchParams.get("redirect");
-  const destination =
-    redirect?.startsWith("/") && !redirect.startsWith("//") ? redirect : "/";
+  const destination = getSafeAuthDestination(searchParams.get("redirect"));
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -70,6 +71,17 @@ export const AuthScreen = () => {
       setError(authError.message ?? "Something went wrong");
     }
   };
+
+  if (isLoading) {
+    return <div style={{ padding: "2rem" }}>Loading…</div>;
+  }
+
+  // OAuth may briefly reach this route while the cross-domain one-time token
+  // is still being exchanged. Once that exchange completes, leave the auth
+  // screen without requiring another click.
+  if (isAuthenticated) {
+    return <Navigate to={destination} replace />;
+  }
 
   return (
     <div className="auth-screen">
